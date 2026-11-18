@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agent ID Hub — for .ai holders on BNB Chain</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #0b0e11; color: #eaecef; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 28px; margin: 8px 0 4px; }
+  p.sub { color: #848e9c; margin: 0 0 20px; }
+  .card { background: #1e2329; border: 1px solid #2b3139; border-radius: 12px; padding: 18px; margin: 14px 0; }
+  .card h2 { font-size: 18px; margin: 0 0 10px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  label { display: block; font-size: 13px; color: #848e9c; margin: 10px 0 4px; }
+  input, textarea { width: 100%; background: #0b0e11; border: 1px solid #2b3139; color: #eaecef; border-radius: 8px; padding: 10px 12px; font-size: 15px; }
+  textarea { min-height: 64px; resize: vertical; }
+  button { background: #f0b90b; color: #111; border: 0; border-radius: 8px; padding: 11px 18px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.ghost { background: transparent; color: #f0b90b; border: 1px solid #f0b90b; }
+  .pill { display: inline-block; background: #2b3139; border-radius: 999px; padding: 4px 10px; font-size: 13px; margin: 2px 4px 2px 0; }
+  .pill b { color: #f0b90b; }
+  .ok { color: #0ecb81; } .warn { color: #f0b90b; } .err { color: #f6465d; }
+  .muted { color: #848e9c; font-size: 13px; }
+  #status { white-space: pre-wrap; word-break: break-word; font-size: 13px; }
+  .banner { background: #2b2200; border: 1px solid #f0b90b; color: #f0b90b; border-radius: 8px; padding: 10px 12px; font-size: 14px; margin: 12px 0; }
+  a { color: #f0b90b; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Agent ID Hub</h1>
+  <p class="sub">A home for Binance Agent ID (.ai) holders on BNB Chain — profile, daily check-in, and tips by name.</p>
+
+  <div id="deployBanner" class="banner" style="display:none"></div>
+
+  <div class="card">
+    <h2>Wallet</h2>
+    <div class="row">
+      <button id="connectBtn">Connect wallet</button>
+      <span id="walletInfo" class="muted">Not connected.</span>
+    </div>
+    <div id="agentIdInfo" class="muted" style="margin-top:8px"></div>
+    <div style="margin-top:10px">
+      <span class="pill">Total check-ins: <b id="statCheckIns">–</b></span>
+      <span class="pill">Total tips: <b id="statTips">–</b></span>
+      <span class="pill">Total tipped: <b id="statTipped">–</b> BNB</span>
+      <span class="pill">Profiles: <b id="statProfiles">–</b></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Profile</h2>
+    <div id="myProfile" class="muted">Connect a wallet to see your profile.</div>
+    <label for="bio">Your bio (max 280 characters)</label>
+    <textarea id="bio" maxlength="280" placeholder="Say something about your agent…"></textarea>
+    <div class="row" style="margin-top:10px"><button id="saveProfileBtn" disabled>Save profile</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Daily check-in</h2>
+    <div id="checkinInfo" class="muted">Connect a wallet to see your streak.</div>
+    <div class="row" style="margin-top:10px"><button id="checkinBtn" disabled>Check in today</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Tip by Agent ID name</h2>
+    <p class="muted">Send BNB to another Agent ID holder using their .ai name. The recipient must hold an Agent ID. Tipping is a voluntary transfer — review the transaction in your wallet before confirming.</p>
+    <label for="tipName">Recipient .ai name (for example: yovmi.ai)</label>
+    <input id="tipName" placeholder="name.ai" />
+    <div class="row" style="margin-top:8px"><button id="resolveBtn" class="ghost" disabled>Resolve name</button><span id="resolved" class="muted"></span></div>
+    <label for="tipAmount">Amount (BNB)</label>
+    <input id="tipAmount" type="number" min="0" step="0.0001" placeholder="0.001" />
+    <label for="tipMsg">Message (optional, max 280 characters)</label>
+    <input id="tipMsg" maxlength="280" placeholder="Thanks!" />
+    <div class="row" style="margin-top:10px"><button id="tipBtn" disabled>Send tip</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Status</h2>
+    <div id="status" class="muted">Ready.</div>
+    <p class="muted" style="margin-top:12px">Agent ID Hub is an independent community project for the Agent ID Hackathon. It is not affiliated with Binance or SPACE ID. Contract: <span id="contractAddr"></span> <span id="bscscanLink"></span></p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<script>
+// ---- Config: set CONTRACT_ADDRESS after deployment ----
+const CONTRACT_ADDRESS = "0x41b97784E1916FDe43bd3a7bD105a94A8f565f69"; // Deployed 2026-11-18, BSC chain 56
+const AGENT_ID_REGISTRY = "0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F";
+const CHAIN_ID = 56; // BNB Smart Chain
+
+const HUB_ABI = [{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":true,"internalType":"uint256","name":"day","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"streak","type":"uint256"}],"name":"CheckedIn","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"string","name":"bio","type":"string"}],"name":"ProfileSet","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":false,"internalType":"string","name":"message","type":"string"}],"name":"Tipped","type":"event"},{"inputs":[],"name":"AGENT_ID","outputs":[{"internalType":"contract IAgentIdRegistry","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"MAX_TEXT_LEN","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"checkIn","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"lastCheckInDay","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"profileBio","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"profileUpdatedAt","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"string","name":"bio","type":"string"}],"name":"setProfile","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"streak","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address payable","name":"recipient","type":"address"},{"internalType":"string","name":"message","type":"string"}],"name":"tip","outputs":[],"stateMutability":"payable","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"tipsReceived","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"tipsReceivedWei","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"tipsSent","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"tipsSentWei","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalCheckIns","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalProfiles","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalTippedWei","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalTips","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}];
+const REGISTRY_ABI = [
+  "function balanceOf(address owner) view returns (uint256)",
+  "function ownerOf(uint256 tokenId) view returns (address)"
+];
+
+const $ = (id) => document.getElementById(id);
+const statusEl = $("status");
+let provider = null, signer = null, account = null, hub = null, registry = null, resolvedRecipient = null;
+
+function setStatus(msg, cls) {
+  statusEl.textContent = msg;
+  statusEl.className = cls || "muted";
+}
+function shortAddr(a) { return a ? a.slice(0, 6) + "…" + a.slice(-4) : ""; }
+function isDeployed() { return CONTRACT_ADDRESS && CONTRACT_ADDRESS !== "0x0000000000000000000000000000000000000000"; }
+
+function refreshContractLabel() {
+  $("contractAddr").textContent = isDeployed() ? CONTRACT_ADDRESS : "not deployed yet";
+  $("bscscanLink").innerHTML = isDeployed()
+    ? '<a target="_blank" rel="noopener" href="https://bscscan.com/address/' + CONTRACT_ADDRESS + '">BscScan</a>'
+    : "";
+  if (!isDeployed()) {
+    const b = $("deployBanner");
+    b.style.display = "block";
+    b.textContent = "The AgentIdHub contract is not deployed yet. Wallet connection and reads that need the contract are disabled until the deployment address is set.";
+  }
+}
+
+async function refreshStats() {
+  if (!isDeployed()) return;
+  try {
+    const readProvider = provider || new ethers.JsonRpcProvider("https://bsc-dataseed.binance.org/");
+    const readHub = new ethers.Contract(CONTRACT_ADDRESS, HUB_ABI, readProvider);
+    const [ci, tips, tipped, profs] = await Promise.all([
+      readHub.totalCheckIns(), readHub.totalTips(), readHub.totalTippedWei(), readHub.totalProfiles()
+    ]);
+    $("statCheckIns").textContent = ci.toString();
+    $("statTips").textContent = tips.toString();
+    $("statTipped").textContent = ethers.formatEther(tipped);
+    $("statProfiles").textContent = profs.toString();
+  } catch (e) { /* stats are best-effort */ }
+}
+
+async function refreshMe() {
+  if (!account || !hub) return;
+  try {
+    const [bio, st, lastDay, sent, recv] = await Promise.all([
+      hub.profileBio(account), hub.streak(account), hub.lastCheckInDay(account),
+      hub.tipsSent(account), hub.tipsReceived(account)
+    ]);
+    $("myProfile").innerHTML = bio
+      ? "Your bio: “" + escapeHtml(bio) + "”<br>Tips sent: " + sent + " · Tips received: " + recv
+      : "No bio set yet. Tips sent: " + sent + " · Tips received: " + recv;
+    const today = Math.floor(Date.now() / 1000 / 86400);
+    const checkedIn = Number(lastDay) === today;
+    $("checkinInfo").innerHTML = "Current streak: <b>" + st + "</b> day(s). " +
+      (checkedIn ? '<span class="ok">Checked in today.</span>' : "Not checked in today yet.");
+    $("checkinBtn").disabled = checkedIn;
+    $("saveProfileBtn").disabled = false;
+    $("resolveBtn").disabled = false;
+    $("tipBtn").disabled = false;
+  } catch (e) {
+    setStatus("Could not read your hub data: " + (e && e.message ? e.message : e), "err");
+  }
+}
+function escapeHtml(s) { return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+$("connectBtn").addEventListener("click", async () => {
+  try {
+    if (!window.ethereum) { setStatus("No injected wallet found. Open this page in a wallet browser or install a wallet extension.", "warn"); return; }
+    provider = new ethers.BrowserProvider(window.ethereum);
+    const net = await provider.getNetwork();
+    if (Number(net.chainId) !== CHAIN_ID) {
+      setStatus("Please switch your wallet to BNB Smart Chain (chain 56). Current chain: " + net.chainId, "warn");
+      try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] }); } catch (_) {}
+      return;
+    }
+    const accounts = await provider.send("eth_requestAccounts", []);
+    account = accounts[0];
+    signer = await provider.getSigner();
+    registry = new ethers.Contract(AGENT_ID_REGISTRY, REGISTRY_ABI, provider);
+    if (isDeployed()) hub = new ethers.Contract(CONTRACT_ADDRESS, HUB_ABI, signer);
+    $("walletInfo").textContent = "Connected: " + shortAddr(account);
+    const bal = await registry.balanceOf(account);
+    const holds = bal > 0n;
+    $("agentIdInfo").innerHTML = holds
+      ? '<span class="ok">This wallet holds an Agent ID (.ai).</span>'
+      : '<span class="err">This wallet does not hold an Agent ID. Only Agent ID holders can use the Hub.</span>';
+    $("saveProfileBtn").disabled = !holds || !isDeployed();
+    $("checkinBtn").disabled = !holds || !isDeployed();
+    $("resolveBtn").disabled = !holds || !isDeployed();
+    $("tipBtn").disabled = !holds || !isDeployed();
+    setStatus(holds ? "Connected. Agent ID confirmed." : "Connected, but no Agent ID found on this wallet.", holds ? "ok" : "warn");
+    await refreshStats();
+    await refreshMe();
+  } catch (e) {
+    setStatus("Connection failed: " + (e && e.message ? e.message : e), "err");
+  }
+});
+
+$("saveProfileBtn").addEventListener("click", async () => {
+  const bio = $("bio").value.trim();
+  if (bio.length > 280) { setStatus("Bio is longer than 280 characters.", "err"); return; }
+  try {
+    setStatus("Sending setProfile… confirm in your wallet.");
+    const tx = await hub.setProfile(bio);
+    setStatus("Waiting for confirmation: " + tx.hash);
+    await tx.wait();
+    setStatus("Profile saved.", "ok");
+    await refreshMe();
+  } catch (e) { setStatus("Save profile failed: " + (e && e.message ? e.message : e), "err"); }
+});
+
+$("checkinBtn").addEventListener("click", async () => {
+  try {
+    setStatus("Sending checkIn… confirm in your wallet.");
+    const tx = await hub.checkIn();
+    setStatus("Waiting for confirmation: " + tx.hash);
+    await tx.wait();
+    setStatus("Checked in. Streak updated.", "ok");
+    await refreshStats(); await refreshMe();
+  } catch (e) { setStatus("Check-in failed: " + (e && e.message ? e.message : e), "err"); }
+});
+
+$("resolveBtn").addEventListener("click", async () => {
+  const name = $("tipName").value.trim().toLowerCase();
+  if (!name.endsWith(".ai") || name.length <= 3) { $("resolved").textContent = "Enter a name ending in .ai"; return; }
+  try {
+    // SPACE ID token IDs are the namehash of the full name. Resolve via ownerOf.
+    const tokenId = ethers.namehash(name);
+    const owner = await registry.ownerOf(tokenId);
+    resolvedRecipient = owner;
+    $("resolved").innerHTML = "Resolved to <b>" + shortAddr(owner) + "</b> <span class='muted'>(" + owner + ")</span>";
+    setStatus("Resolved " + name + " to " + owner, "ok");
+  } catch (e) {
+    resolvedRecipient = null;
+    $("resolved").textContent = "Could not resolve that name on-chain. Check the spelling, or paste the recipient address instead.";
+    setStatus("Name resolution failed: " + (e && e.message ? e.message : e), "err");
+  }
+});
+
+$("tipBtn").addEventListener("click", async () => {
+  const amountStr = $("tipAmount").value;
+  const message = $("tipMsg").value.trim();
+  if (!resolvedRecipient) { setStatus("Resolve the recipient .ai name first.", "warn"); return; }
+  let value;
+  try { value = ethers.parseEther(amountStr); } catch (_) { setStatus("Enter a valid BNB amount.", "err"); return; }
+  if (value <= 0n) { setStatus("Tip amount must be greater than 0.", "err"); return; }
+  try {
+    setStatus("Sending tip of " + amountStr + " BNB to " + resolvedRecipient + "… confirm in your wallet. This is a voluntary transfer.");
+    const tx = await hub.tip(resolvedRecipient, message, { value });
+    setStatus("Waiting for confirmation: " + tx.hash);
+    await tx.wait();
+    setStatus("Tip sent.", "ok");
+    await refreshStats(); await refreshMe();
+  } catch (e) { setStatus("Tip failed: " + (e && e.message ? e.message : e), "err"); }
+});
+
+refreshContractLabel();
+refreshStats();
+</script>
+</body>
+</html>
