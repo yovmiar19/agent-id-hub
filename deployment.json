@@ -1,0 +1,9 @@
+{
+  "contract": "AgentIdHub",
+  "address": "0x41b97784E1916FDe43bd3a7bD105a94A8f565f69",
+  "deployer": "0x7DA35B19E3278AD0bfe49E4ACEaD0ffF88Db0745",
+  "chainId": 56,
+  "txHash": "0xcb1a6e8aa8ed333417a181ef5037a6e3b09d67307c934ec5b4dce5b289256577",
+  "blockNumber": 134335646,
+  "gasUsed": "932501"
+}
